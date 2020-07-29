@@ -102,6 +102,7 @@ class E2E(object):
 
             raw = f.read(52)
             main_directory = self.main_directory_structure.parse(raw)
+            print("main dir num slices ", main_directory.num_entries)
 
             # traverse list of main directories in first pass
             directory_stack = []
@@ -125,6 +126,13 @@ class E2E(object):
                 for ii in range(directory_chunk.num_entries):
                     raw = f.read(44)
                     chunk = self.sub_directory_structure.parse(raw)
+                    # fundus = 33620481, oct = 35652097
+                    # print("chunk type ", chunk.type)
+                    # if chunk.type == 4294967295:
+                    #     print("chunk type slice")
+                    #     raw = f.read(20)
+                    #     laterality_data = self.patient_info_structure.parse(raw)
+                    #     print("patient data: ", laterality_data)
                     volume_string = '{}_{}_{}'.format(chunk.patient_id, chunk.study_id, chunk.series_id)
                     if volume_string not in volume_dict.keys():
                         if self.imagetype=="Fundus Autofluorescence":
@@ -144,15 +152,18 @@ class E2E(object):
             for volume, num_slices in volume_dict.items():
                 if num_slices > 0:
                     volume_array_dict[volume] = [0] * int(num_slices)
+                    # print("volume string {}, num slices: {}".format(volume, int(num_slices)))
+            # print("initialised volume array dict: ", volume_array_dict)
             # traverse all chunks and extract slices
-            # fundus_images = []
-            fundus_images = []
             for start, pos in chunk_stack:
                 f.seek(start)
                 raw = f.read(60)
                 chunk = self.chunk_structure.parse(raw)
+                # print("chunk size: ", chunk.size)
                 if self.imagetype == "Fundus Autofluorescence":
+                # print("chunk type: ", chunk.type)
                     if chunk.type == 11: # laterality data
+                    # tried types = 2 , 3, 5, 10004
                         raw = f.read(20)
                         laterality_data = self.lat_structure.parse(raw)
                         # laterality information is decimal encoded - convert to ASCII representation (http://www.asciitable.com/)
@@ -161,27 +172,32 @@ class E2E(object):
                         elif laterality_data.laterality == 76:
                             self.laterality = 'L'
 
+                fundus_images = []
                 if chunk.type == 1073741824:  # image data
                     raw = f.read(20)
                     image_data = self.image_structure.parse(raw)
+                    # print("image data type: ", image_data.type)
 
                     if chunk.ind == 0:  # fundus data
                         # pass
-                        print("in fundus data")
+                        # print("in fundus data")
                         height, width = (image_data.height, image_data.width)
                         try:
                             # raw_volume = [struct.unpack('H', f.read(2))[0] for pixel in range(height*width)]
                             raw_volume = [struct.unpack('B', f.read(1))[0] for pixel in range(height*width)]
                             image = np.array(raw_volume).reshape(height,width)
-                            # plt.imshow(image, cmap='gray')
-                            # plt.show()
+                            plt.imshow(image, cmap='gray')
+                            plt.show()
                             fundus_images.append((self.laterality, image))
                         except Exception as e:
                             print("error {}".format(e))
                             return fundus_images
                         volume_string = '{}_{}_{}'.format(chunk.patient_id, chunk.study_id, chunk.series_id)
+                        # print("faf volume string", volume_string)
+                        # volume_array_dict[volume_string] = (self.laterality, image)
                         if volume_string in volume_array_dict.keys():
                             volume_array_dict[volume_string][int(chunk.slice_id / 2) -1] = (self.laterality, image)
+                            # print(volume_array_dict[volume_string][int(chunk.slice_id / 2) -1])
                             # volume_array_dict[volume_string][int(chunk.slice_id / 2) -1] = image
                         else:
                             print('Failed to save image data for volume {}'.format(volume_string))
@@ -191,6 +207,7 @@ class E2E(object):
                         image = np.array(raw_volume).reshape(image_data.width, image_data.height)
                         image = 256 * pow(image, 1.0 / 2.4)
                         volume_string = '{}_{}_{}'.format(chunk.patient_id, chunk.study_id, chunk.series_id)
+                        # print("oct volume string", volume_string)
                         if volume_string in volume_array_dict.keys():
                             volume_array_dict[volume_string][int(chunk.slice_id / 2) - 1] = image
                         else:
@@ -200,8 +217,10 @@ class E2E(object):
 
             oct_volumes = []
             for key, volume in volume_array_dict.items():
+                print(volume)
                 if self.imagetype == "Fundus Autofluorescence":
                     for lat, vol in volume:
+                        print("lat {}, vol: {}".format(lat, vol))
                         oct_volumes.append(OCTVolumeWithMetaData(volume=[vol], laterality=lat, patient_id=key))
                 else:
                     oct_volumes.append(OCTVolumeWithMetaData(volume=volume, patient_id=key))

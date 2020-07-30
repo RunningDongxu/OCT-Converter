@@ -164,6 +164,7 @@ class E2E(object):
                         volume_array_dict[volume] = [0] * int(num_slices)
             # traverse all chunks and extract slices
             fundus_images = {}
+            numfun = 0
             for start, pos in chunk_stack:
                 f.seek(start)
                 raw = f.read(60)
@@ -182,18 +183,29 @@ class E2E(object):
                     raw = f.read(20)
                     image_data = self.image_structure.parse(raw)
 
+                    # hack for extracting laterality from oct vols
+                    # first two fundus images are left eye, last two are right eye
                     if chunk.ind == 0:  # fundus data
                         # pass
                         height, width = (image_data.height, image_data.width)
                         try:
-                            # raw_volume = [struct.unpack('H', f.read(2))[0] for pixel in range(height*width)]
                             raw_volume = [struct.unpack('B', f.read(1))[0] for pixel in range(height*width)]
                             image = np.array(raw_volume).reshape(height,width)
-                            # plt.imshow(image, cmap='gray')
-                            # plt.show()
-                            # fundus_images.append((self.laterality, image))
-                            volume_string = '{}_{}_{}'.format(chunk.patient_id, chunk.study_id, chunk.series_id)
-                            fundus_images[volume_string] = (self.laterality, image)
+                            if self.imagetype == "Fundus Autofluorescence":
+                                # raw_volume = [struct.unpack('H', f.read(2))[0] for pixel in range(height*width)]
+                                # plt.imshow(image, cmap='gray')
+                                # plt.show()
+                                fundus_images.append((self.laterality, image))
+                            else:
+                                volume_string = '{}_{}_{}'.format(chunk.patient_id, chunk.study_id, chunk.series_id)
+                                if volume_string in volume_array_dict.keys():
+                                    # print("faf volume string: ", volume_string)
+                                    if numfun < 2:
+                                        self.laterality = 'L'
+                                    else:
+                                        self.laterality = 'R'
+                                    fundus_images[volume_string] = (self.laterality, image)
+                                    numfun += 1
                         except Exception as e:
                             print("error {}".format(e))
                             return fundus_images
@@ -224,7 +236,9 @@ class E2E(object):
                     for lat, vol in volume:
                         oct_volumes.append(OCTVolumeWithMetaData(volume=[vol], laterality=lat, patient_id=key))
                 else:
-                    oct_volumes.append(OCTVolumeWithMetaData(volume=volume, patient_id=key))
+                    lat = fundus_images[key][0]
+                    print("key {}, laterality {}".format(key, lat))
+                    oct_volumes.append(OCTVolumeWithMetaData(volume=volume, laterality=lat, patient_id=key))
 
         return oct_volumes, fundus_images
 

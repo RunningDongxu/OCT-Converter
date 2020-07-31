@@ -201,9 +201,9 @@ class E2E(object):
                                 if volume_string in volume_array_dict.keys():
                                     # print("faf volume string: ", volume_string)
                                     if numfun < 2:
-                                        self.laterality = 'L'
-                                    else:
                                         self.laterality = 'R'
+                                    else:
+                                        self.laterality = 'L'
                                     fundus_images[volume_string] = (self.laterality, image)
                                     numfun += 1
                         except Exception as e:

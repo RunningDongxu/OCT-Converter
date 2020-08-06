@@ -80,8 +80,8 @@ class E2E(object):
         )
         self.lat_structure = Struct(
             # 'unknown' / Int8un,
-            # 'unknown' / PaddedString(14, 'ascii'),
-            'unknown' / Array(14, Int16un),
+            'unknown' / PaddedString(14, 'ascii'),
+            # 'unknown' / Array(14, Int16un),
             'laterality' / Int8un,
             'unknown2' / Int8un
         )
@@ -175,7 +175,7 @@ class E2E(object):
                 if self.imagetype == "Fundus Autofluorescence":
                     if chunk.type == 11: # laterality data
                         try:
-                            raw = f.read(60)
+                            raw = f.read(20)
                             laterality_data = self.lat_structure.parse(raw)
                             # laterality information is decimal encoded - convert to ASCII representation (http://www.asciitable.com/)
                             if laterality_data.laterality == 82:

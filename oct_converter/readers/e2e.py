@@ -3,6 +3,7 @@ from construct import PaddedString, Int16un, Struct, Int32sn, Int32un, Array, In
 from oct_converter.image_types import OCTVolumeWithMetaData, FundusImageWithMetaData
 import struct
 import matplotlib.pyplot as plt
+import setup_logger
 
 
 class E2E(object):
@@ -24,6 +25,7 @@ class E2E(object):
 
     def __init__(self, filepath, imagetype=""):
         self.filepath = filepath
+        self.logger = setup_logger.get_logger()#('extract_e2e.log')
         self.imagetype = imagetype
         self.laterality = None
         self.header_structure = Struct(
@@ -78,7 +80,8 @@ class E2E(object):
         )
         self.lat_structure = Struct(
             # 'unknown' / Int8un,
-            'unknown' / PaddedString(14, 'ascii'),
+            # 'unknown' / PaddedString(14, 'ascii'),
+            'unknown' / Array(14, Int16un),
             'laterality' / Int8un,
             'unknown2' / Int8un
         )
@@ -171,13 +174,16 @@ class E2E(object):
                 chunk = self.chunk_structure.parse(raw)
                 if self.imagetype == "Fundus Autofluorescence":
                     if chunk.type == 11: # laterality data
-                        raw = f.read(20)
-                        laterality_data = self.lat_structure.parse(raw)
-                        # laterality information is decimal encoded - convert to ASCII representation (http://www.asciitable.com/)
-                        if laterality_data.laterality == 82:
-                            self.laterality = 'R'
-                        elif laterality_data.laterality == 76:
-                            self.laterality = 'L'
+                        try:
+                            raw = f.read(60)
+                            laterality_data = self.lat_structure.parse(raw)
+                            # laterality information is decimal encoded - convert to ASCII representation (http://www.asciitable.com/)
+                            if laterality_data.laterality == 82:
+                                self.laterality = 'R'
+                            elif laterality_data.laterality == 76:
+                                self.laterality = 'L'
+                        except UnicodeDecodeError as ue:
+                            self.logger.warning("cannot decode laterality, data structure differs from what is expected - passing")
 
                 if chunk.type == 1073741824:  # image data
                     raw = f.read(20)
@@ -233,8 +239,12 @@ class E2E(object):
             oct_volumes = []
             for key, volume in volume_array_dict.items():
                 if self.imagetype == "Fundus Autofluorescence":
-                    for lat, vol in volume:
-                        oct_volumes.append(OCTVolumeWithMetaData(volume=[vol], laterality=lat, patient_id=key))
+                    try:
+                        for lat, vol in volume:
+                            oct_volumes.append(OCTVolumeWithMetaData(volume=[vol], laterality=lat, patient_id=key))
+                    except (TypeError, ValueError) as e:
+                        print("error: {}, volume not iteratable".format(e))
+                        self.logger.warning("error: {}, volume not iteratable".format(e))
                 else:
                     lat = fundus_images[key][0]
                     print("key {}, laterality {}".format(key, lat))
